@@ -125,14 +125,16 @@ def get_patients_by_cohort(df: DataFrame) -> DataFrame:
                 value=None
             ),
         )
+        .withColumn(
+            "cohort_name",
+            F.when(condition=F.col("cohort") == "a", value="pregnancy")
+            .when(condition=F.col("cohort") == "b", value="asthma")
+            .when(condition=F.col("cohort") == "c", value="smoker")
+            .when(condition=F.col("cohort") == "d", value="no conditions")
+            .otherwise(value=None),
+        )
+        .select("patient", "cohort", "cohort_name")
     )
-    # (
-    #     cohorts_df
-    #     .drop("patient")
-    #     .groupBy("pregnancy", "asthma", "smoker", "cohort")
-    #     .count()
-    #     .sort(F.col("count").desc())
-    # ).show()
     #
     return cohorts_df
 
@@ -167,7 +169,7 @@ def main():
     covid_patients_df = get_covid_patients(conditions_df=conditions_df)
     # 88,166 patients have Covid-19
 
-    covid_patient_conditions_df = get_covid_patient_conditions(
+    covid_patients_all_conditions_df = get_covid_patient_conditions(
         conditions_df=conditions_df, covid_patients_df=covid_patients_df
     )
     # +--------------------+---------+--------------------+
@@ -178,25 +180,21 @@ def main():
     # |1b9abba6-fc17-4af...| 59621000|        Hypertension|
     # +--------------------+---------+--------------------+
 
-    patients_by_cohort_df = get_patients_by_cohort(df=covid_patient_conditions_df)
-    # +---------+------+------+------+-----+
-    # |pregnancy|asthma|smoker|cohort|count|
-    # +---------+------+------+------+-----+
-    # |    false| false| false|     d|79492|
-    # |     true| false| false|     a| 6508|
-    # |    false|  true| false|     b| 1563|
-    # |    false| false|  true|     c|  551|
-    # |     true|  true| false|  null|   45|
-    # |     true| false|  true|  null|    7|
-    # +---------+------+------+------+-----+
+    covid_patients_by_cohort_df = get_patients_by_cohort(
+        df=covid_patients_all_conditions_df
+    )
+    # +--------------------+------+-------------+
+    # |             patient|cohort|  cohort_name|
+    # +--------------------+------+-------------+
+    # |1b9abba6-fc17-4af...|     a|    pregnancy|
+    # |bf138b41-d49b-40f...|     b|     asthma  |
+    # |b8e071b6-3a2d-48d...|     c|       smoker|
+    # |ec7f9ffa-5d03-466...|     d|no conditions|
+    # +--------------------+------+-------------+
 
-    # Task 1.2: Data Preprocessing
-    # Identify patients with COVID-19.
-    # Create 4 groups: Groups A, B, C, and D (patients with COVID-19 and one of the specified conditions)
-    # A: pregnancy, B: asthma, C: smokers
-    # and Group D (patients with COVID-19 without any of these conditions).
-    # Preprocess the data to ensure it's ready for the ANOVA analysis.
-    # Provide code/scripts for data preprocessing.
+    ##############################
+    # Task 2.1: ANOVA Calculation
+    ##############################
 
 
 if __name__ == "__main__":
