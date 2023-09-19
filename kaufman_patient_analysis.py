@@ -97,24 +97,42 @@ def get_patients_by_cohort(df: DataFrame) -> DataFrame:
             F.max("asthma").alias("asthma"),
             F.max("smoker").alias("smoker"),
         )
-        # TODO one patient can be in multiple cohorts
-        # .withColumn(
-        # 	"cohort",
-        # 	F.when(
-        # 		# Column value is True
-        # 		condition=F.col("pregnancy"),
-        # 		value="pregnancy"
-        # 	).when(
-        # 		condition=F.col("asthma"),
-        # 		value="asthma"
-        # 	).when(
-        # 		condition=F.col("smoker"),
-        # 		value="smoker"
-        # 	).otherwise(
-        # 		value="none"
-        # 	)
-        # )
+        # Take note that this excludes patients that meet criteria for more than one of the three cohorts
+        .withColumn(
+            "cohort",
+            F.when(
+                # pregnancy: cohort a
+                condition=F.col("pregnancy") & ~F.col("asthma") & ~F.col("smoker"),
+                value="a",
+            )
+            .when(
+                # asthma: cohort b
+                condition=F.col("asthma") & ~F.col("pregnancy") & ~F.col("smoker"),
+                value="b",
+            )
+            .when(
+                # smoker: cohort c
+                condition=F.col("smoker") & ~F.col("pregnancy") & ~F.col("asthma"),
+                value="c",
+            )
+            .when(
+                # none of the above: cohort d
+                condition=~F.col("smoker") & ~F.col("pregnancy") & ~F.col("asthma"),
+                value="d",
+            )
+            .otherwise(
+                # catch-all
+                value=None
+            ),
+        )
     )
+    # (
+    #     cohorts_df
+    #     .drop("patient")
+    #     .groupBy("pregnancy", "asthma", "smoker", "cohort")
+    #     .count()
+    #     .sort(F.col("count").desc())
+    # ).show()
     #
     return cohorts_df
 
@@ -146,13 +164,31 @@ def main():
     ###############################
     # Task 1.2: Data Preprocessing
     ###############################
-    covid_patients_df = get_covid_patients(
-        conditions_df=conditions_df
-    )  # 88,166 patients have Covid-19
+    covid_patients_df = get_covid_patients(conditions_df=conditions_df)
+    # 88,166 patients have Covid-19
+
     covid_patient_conditions_df = get_covid_patient_conditions(
         conditions_df=conditions_df, covid_patients_df=covid_patients_df
     )
+    # +--------------------+---------+--------------------+
+    # |             patient|     code|         description|
+    # +--------------------+---------+--------------------+
+    # |1b9abba6-fc17-4af...|128613002|    Seizure disorder|
+    # |1b9abba6-fc17-4af...|703151001|History of single...|
+    # |1b9abba6-fc17-4af...| 59621000|        Hypertension|
+    # +--------------------+---------+--------------------+
+
     patients_by_cohort_df = get_patients_by_cohort(df=covid_patient_conditions_df)
+    # +---------+------+------+------+-----+
+    # |pregnancy|asthma|smoker|cohort|count|
+    # +---------+------+------+------+-----+
+    # |    false| false| false|     d|79492|
+    # |     true| false| false|     a| 6508|
+    # |    false|  true| false|     b| 1563|
+    # |    false| false|  true|     c|  551|
+    # |     true|  true| false|  null|   45|
+    # |     true| false|  true|  null|    7|
+    # +---------+------+------+------+-----+
 
     # Task 1.2: Data Preprocessing
     # Identify patients with COVID-19.
