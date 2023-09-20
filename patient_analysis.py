@@ -195,10 +195,7 @@ def get_conditions_during_or_after_covid(
         )
         .withColumn(
             "percent_patients_with_symptom",
-            F.round(
-                col=F.col("patients_with_symptom") / F.col("patients_in_cohort"),
-                scale=2,
-            ),
+            F.col("patients_with_symptom") / F.col("patients_in_cohort"),
         )
         .filter(F.col("row_num") <= 5)
         .sort(F.col("cohort"), F.col("row_num"))
@@ -223,7 +220,7 @@ def save_as_tsv(df: DataFrame, file_path: str) -> NoReturn:
         .csv(
             header=True,
             sep="\t",
-            path=f"{OUTPUT_BASE_DIR}/{file_path}.tsv",
+            path=f"{OUTPUT_BASE_DIR}/{file_path}",
             mode="overwrite",
         )
     )
