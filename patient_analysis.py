@@ -1,16 +1,17 @@
-from typing import List
+from typing import List, NoReturn
 from pyspark.sql import functions as F
 from pyspark.sql import DataFrame, SparkSession, Window
 
 
 DATA_BASE_PATH = "100k_synthea_covid19_csv"
+OUTPUT_BASE_DIR = "output_data"
 
 
 def read_csv(spark: SparkSession, file_name: str) -> DataFrame:
     df = spark.read.csv(
         path=f"{DATA_BASE_PATH}/{file_name}", header=True, inferSchema=True
     )
-    #
+
     return df
 
 
@@ -28,7 +29,7 @@ def get_covid_patients(conditions_df: DataFrame) -> DataFrame:
         .groupBy(F.col("patient"))
         .agg(F.min(F.col("start")).alias("covid_start_date"))
     )
-    #
+
     return covid_patients_df
 
 
@@ -44,7 +45,7 @@ def get_covid_patient_conditions(
         .withColumnRenamed(existing="start", new="condition_start_date")
         .select("patient", "symptom_code", "symptom_desc", "condition_start_date")
     )
-    #
+
     return covid_patient_conditions_df
 
 
@@ -93,7 +94,7 @@ def get_patients_by_cohort(df: DataFrame) -> List[DataFrame]:
             ).otherwise(value=False),
         )
     )
-    #
+
     # Roll up and merge groups into one cohort column
     cohorts_df = (
         cohorts_df.groupBy(F.col("patient"))
@@ -144,11 +145,11 @@ def get_patients_by_cohort(df: DataFrame) -> List[DataFrame]:
         .filter(F.col("cohort").isNotNull())
         .select("patient", "cohort", "cohort_name")
     ).cache()
-    #
+
     patients_per_cohort_df = cohorts_df.groupBy(
         F.col("cohort"), F.col("cohort_name")
     ).agg(F.countDistinct(F.col("patient")).alias("patients_in_cohort"))
-    #
+
     return [cohorts_df, patients_per_cohort_df]
 
 
@@ -181,7 +182,7 @@ def get_conditions_during_or_after_covid(
         )
         .agg(F.countDistinct(F.col("patient")).alias("patient_with_symptom"))
     )
-    #
+
     other_conditions_agg_df = (
         other_cond_df.withColumn(
             "row_num",
@@ -210,8 +211,19 @@ def get_conditions_during_or_after_covid(
             "percent_patients_with_symptom",
         )
     )
-    #
+
     return other_conditions_agg_df
+
+
+def save_as_tsv(df: DataFrame, file_path: str) -> NoReturn:
+    (
+        df.write.option("header", True).csv(
+            header=True,
+            sep="\t",
+            path=f"{OUTPUT_BASE_DIR}/{file_path}.tsv",
+            mode="overwrite",
+        )
+    )
 
 
 def main():
@@ -221,21 +233,6 @@ def main():
     # Task 1.1: Data Ingestion
     ###########################
     conditions_df = read_csv(spark=spark, file_name="conditions.csv").cache()
-    # allergies_df = read_csv(spark=spark, file_name="allergies.csv")
-    # care_plans_df = read_csv(spark=spark, file_name="careplans.csv")
-    # devices_df = read_csv(spark=spark, file_name="devices.csv")
-    # encounters_df = read_csv(spark=spark, file_name="encounters.csv")
-    # imaging_studies_df = read_csv(spark=spark, file_name="imaging_studies.csv")
-    # immunizations_df = read_csv(spark=spark, file_name="immunizations.csv")
-    # medications_df = read_csv(spark=spark, file_name="medications.csv")
-    # observations_df = read_csv(spark=spark, file_name="observations.csv")
-    # organizations_df = read_csv(spark=spark, file_name="organizations.csv")
-    # patients_df = read_csv(spark=spark, file_name="patients.csv")
-    # payer_transitions_df = read_csv(spark=spark, file_name="payer_transitions.csv")
-    # payers_df = read_csv(spark=spark, file_name="payers.csv")
-    # procedures_df = read_csv(spark=spark, file_name="procedures.csv")
-    # providers_df = read_csv(spark=spark, file_name="providers.csv")
-    # supplies_df = read_csv(spark=spark, file_name="supplies.csv")
 
     ###############################
     # Task 1.2: Data Preprocessing
@@ -291,7 +288,6 @@ def main():
         covid_patients_by_cohort_df=covid_patients_by_cohort_df,
         patient_count_per_cohort_df=patient_count_per_cohort_df,
     )
-    other_conditions_df.show(n=100, truncate=False)
     # +------+-----------+------------+------------------------+------------------+-------------+
     # |cohort|cohort_name|symptom_code|symptom_desc            |patients_in_cohort|patient_count|
     # +------+-----------+------------+------------------------+------------------+-------------+
@@ -316,6 +312,14 @@ def main():
     # |d     |           |84229001    |Fatigue (finding)       |79461             |29241        |
     # |d     |           |248595008   |Sputum finding (finding)|79461             |25627        |
     # +------+-----------+------------+------------------------+------------------+-------------+
+
+    # Save data as TSV files
+    output_table_locations = {
+        "symptom_comparisons": other_conditions_df,
+    }
+
+    for table_name, df in output_table_locations:
+        save_as_tsv(df=df, file_path=table_name)
 
 
 if __name__ == "__main__":
