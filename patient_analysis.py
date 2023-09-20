@@ -1,3 +1,4 @@
+import os
 from typing import List, NoReturn
 from pyspark.sql import functions as F
 from pyspark.sql import DataFrame, SparkSession, Window
@@ -180,7 +181,7 @@ def get_conditions_during_or_after_covid(
             F.col("symptom_desc"),
             F.col("patients_in_cohort"),
         )
-        .agg(F.countDistinct(F.col("patient")).alias("patient_with_symptom"))
+        .agg(F.countDistinct(F.col("patient")).alias("patients_with_symptom"))
     )
 
     other_conditions_agg_df = (
@@ -217,7 +218,9 @@ def get_conditions_during_or_after_covid(
 
 def save_as_tsv(df: DataFrame, file_path: str) -> NoReturn:
     (
-        df.write.option("header", True).csv(
+        df.coalesce(1)
+        .write.option("header", True)
+        .csv(
             header=True,
             sep="\t",
             path=f"{OUTPUT_BASE_DIR}/{file_path}.tsv",
@@ -318,7 +321,7 @@ def main():
         "symptom_comparisons": other_conditions_df,
     }
 
-    for table_name, df in output_table_locations:
+    for table_name, df in output_table_locations.items():
         save_as_tsv(df=df, file_path=table_name)
 
 
