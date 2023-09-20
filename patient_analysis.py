@@ -111,22 +111,22 @@ def get_patients_by_cohort(df: DataFrame) -> List[DataFrame]:
             F.when(
                 # pregnancy: cohort a
                 condition=F.col("pregnancy") & ~F.col("asthma") & ~F.col("smoker"),
-                value="a",
+                value="A",
             )
             .when(
                 # asthma: cohort b
                 condition=F.col("asthma") & ~F.col("pregnancy") & ~F.col("smoker"),
-                value="b",
+                value="B",
             )
             .when(
                 # smoker: cohort c
                 condition=F.col("smoker") & ~F.col("pregnancy") & ~F.col("asthma"),
-                value="c",
+                value="C",
             )
             .when(
                 # none of the above: cohort d
                 condition=~F.col("smoker") & ~F.col("pregnancy") & ~F.col("asthma"),
-                value="d",
+                value="D",
             )
             .otherwise(
                 # catch-all
@@ -135,15 +135,15 @@ def get_patients_by_cohort(df: DataFrame) -> List[DataFrame]:
         )
         .withColumn(
             "cohort_name",
-            F.when(condition=F.col("cohort") == "a", value="pregnancy")
-            .when(condition=F.col("cohort") == "b", value="asthma")
-            .when(condition=F.col("cohort") == "c", value="smoker")
-            .when(condition=F.col("cohort") == "d", value="")
-            .otherwise(value=None),
+            F.when(condition=F.col("cohort") == "A", value="pregnancy")
+            .when(condition=F.col("cohort") == "B", value="asthma")
+            .when(condition=F.col("cohort") == "C", value="smoker")
+            .when(condition=F.col("cohort") == "D", value=None)
+            .otherwise(value="exclude"),
         )
         # Exclude exclusions (small percentage of patients
         # who do not fall nicely into a single cohort (E.g., pregnant and have asthma)
-        .filter(F.col("cohort").isNotNull())
+        .filter(F.col("cohort") != "exclude")
         .select("patient", "cohort", "cohort_name")
     ).cache()
 
@@ -160,6 +160,8 @@ def get_conditions_during_or_after_covid(
     covid_patients_by_cohort_df: DataFrame,
     patient_count_per_cohort_df: DataFrame,
 ) -> DataFrame:
+    max_results_per_cohort = 10
+
     other_cond_df = (
         covid_patients_all_conditions_df.join(
             other=covid_patients_by_cohort_df,
@@ -197,13 +199,13 @@ def get_conditions_during_or_after_covid(
             "percent_patients_with_symptom",
             F.col("patients_with_symptom") / F.col("patients_in_cohort"),
         )
-        .filter(F.col("row_num") <= 5)
+        .filter(F.col("row_num") <= max_results_per_cohort)
         .sort(F.col("cohort"), F.col("row_num"))
         .select(
             "cohort",
             "cohort_name",
-            "symptom_desc",
             "symptom_code",
+            "symptom_desc",
             "patients_in_cohort",
             "patients_with_symptom",
             "percent_patients_with_symptom",
@@ -232,7 +234,7 @@ def main():
     ###########################
     # Task 1.1: Data Ingestion
     ###########################
-    conditions_df = read_csv(spark=spark, file_name="conditions.csv").cache()
+    conditions_df = read_csv(spark=spark, file_name="conditions.csv.gz").cache()
 
     ###############################
     # Task 1.2: Data Preprocessing
